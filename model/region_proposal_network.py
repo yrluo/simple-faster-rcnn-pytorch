@@ -6,7 +6,7 @@ from torch import nn
 from model.utils.bbox_tools import generate_anchor_base
 from model.utils.creator_tool import ProposalCreator
 
-
+# 自行重定义一个RPN网络
 class RegionProposalNetwork(nn.Module):
     """Region Proposal Network introduced in Faster R-CNN.
 

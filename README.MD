@@ -1,5 +1,14 @@
 # A Simple and Fast Implementation of Faster R-CNN
-
+visdom
+torchvision
+scikit-image
+tqdm
+fire
+pprint
+matplotlib
+ipdb
+cython
+git+https://github.com/pytorch/tnt.git@master
 ## 1. Introduction
 
 This project is a **Simplified** Faster R-CNN implementation based on [chainercv](https://github.com/chainer/chainercv) and other [projects](#acknowledgement) . It aims to:

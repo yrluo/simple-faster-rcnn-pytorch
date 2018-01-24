@@ -1,33 +1,42 @@
 import os
 
-import ipdb
+import ipdb # 用于交互式调试bug
 import matplotlib
-from tqdm import tqdm
+from tqdm import tqdm # 进度条
 
-from utils.config import opt
-from data.dataset import Dataset, TestDataset, inverse_normalize
+from utils.config import opt # 引入定义的config类实例opt
+from data.dataset import Dataset, TestDataset, inverse_normalize # 作者自己定义的Dataset类，不是pytorch的Dataset类
 from model import FasterRCNNVGG16
-from torch.autograd import Variable
-from torch.utils import data as data_
-from trainer import FasterRCNNTrainer
-from utils import array_tool as at
-from utils.vis_tool import visdom_bbox
-from utils.eval_tool import eval_detection_voc
 
+from torch.autograd import Variable
+from torch.utils import data as data_ # 防止重名
+from trainer import FasterRCNNTrainer
+from utils import array_tool as at # 作者定义的转换类型工具
+from utils.vis_tool import visdom_bbox # 作者定义的可视化工具
+from utils.eval_tool import eval_detection_voc # 作者定义的评价工具
+from chainer import cuda # 神奇操作,使用cupy4.0替换了cupy2.x中的memorypool,速度提升5%
+
+
+# --------用于修复bug----------
 # fix for ulimit
 # https://github.com/pytorch/pytorch/issues/973#issuecomment-346405667
 import resource
 
 rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
 resource.setrlimit(resource.RLIMIT_NOFILE, (20480, rlimit[1]))
+# --------修复bug结束----------
 
-matplotlib.use('agg')
+matplotlib.use('agg') # agg貌似不能绘图
 
 
-def eval(dataloader, faster_rcnn, test_num=10000):
+# 指定所用显卡
+os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
+os.environ["CUDA_VISIBLE_DEVICES"] = '1' # 使用第二张显卡
+
+def eval(dataloader, faster_rcnn, test_num=10000): # 评价函数
     pred_bboxes, pred_labels, pred_scores = list(), list(), list()
     gt_bboxes, gt_labels, gt_difficults = list(), list(), list()
-    for ii, (imgs, sizes, gt_bboxes_, gt_labels_, gt_difficults_) in tqdm(enumerate(dataloader)):
+    for ii, (imgs, sizes, gt_bboxes_, gt_labels_, gt_difficults_) in tqdm(enumerate(dataloader)): # ii 用来指示当前进度
         sizes = [sizes[0][0], sizes[1][0]]
         pred_bboxes_, pred_labels_, pred_scores_ = faster_rcnn.predict(imgs, [sizes])
         gt_bboxes += list(gt_bboxes_.numpy())
@@ -44,39 +53,45 @@ def eval(dataloader, faster_rcnn, test_num=10000):
         use_07_metric=True)
     return result
 
+# TODO: 指定使用哪一张显卡，方法见书本
+def train(**kwargs): # *变量名, 表示任何多个无名参数, 它是一个tuple；**变量名, 表示关键字参数, 它是一个dict
+    opt._parse(kwargs) # 识别参数,传递过来的是一个字典,用parse来解析
 
-def train(**kwargs):
-    opt._parse(kwargs)
+    dataset = Dataset(opt) # 作者自定义的Dataset类
+    print('读取数据中...')
 
-    dataset = Dataset(opt)
-    print('load data')
+    # Dataloader 定义了一次获取批次数据的方法
     dataloader = data_.DataLoader(dataset, \
                                   batch_size=1, \
                                   shuffle=True, \
                                   # pin_memory=True,
-                                  num_workers=opt.num_workers)
-    testset = TestDataset(opt)
+                                  num_workers=opt.num_workers) # PyTorch自带的DataLoader类,生成一个多线程迭代器来迭代dataset, 以供读取一个batch的数据
+    testset = TestDataset(opt, split='trainval')
+
+    # 测试集loader
     test_dataloader = data_.DataLoader(testset,
                                        batch_size=1,
                                        num_workers=opt.test_num_workers,
                                        shuffle=False, \
                                        pin_memory=True
                                        )
-    faster_rcnn = FasterRCNNVGG16()
-    print('model construct completed')
-    trainer = FasterRCNNTrainer(faster_rcnn).cuda()
-    if opt.load_path:
+    faster_rcnn = FasterRCNNVGG16() # 网络定义
+    print('模型构建完毕!')
+    trainer = FasterRCNNTrainer(faster_rcnn).cuda() # 定义一个训练器,返回loss, .cuda()表示把返回的Tensor存入GPU
+    if opt.load_path: # 如果要加载预训练模型
         trainer.load(opt.load_path)
-        print('load pretrained model from %s' % opt.load_path)
+        print('已加载预训练参数 %s' % opt.load_path)
+    else:
+        print("未引入预训练参数, 随机初始化网络参数")
 
-    trainer.vis.text(dataset.db.label_names, win='labels')
+    trainer.vis.text(dataset.db.label_names, win='labels') # 定义可视化的标题
     best_map = 0
     for epoch in range(opt.epoch):
-        trainer.reset_meters()
+        trainer.reset_meters() # 重置测各种测量仪
         for ii, (img, bbox_, label_, scale) in tqdm(enumerate(dataloader)):
-            scale = at.scalar(scale)
-            img, bbox, label = img.cuda().float(), bbox_.cuda(), label_.cuda()
-            img, bbox, label = Variable(img), Variable(bbox), Variable(label)
+            scale = at.scalar(scale) # 转化为标量
+            img, bbox, label = img.cuda().float(), bbox_.cuda(), label_.cuda() # 存入GPU
+            img, bbox, label = Variable(img), Variable(bbox), Variable(label) # 转换成变量以供自动微分器使用
             trainer.train_step(img, bbox, label, scale)
 
             if (ii + 1) % opt.plot_every == 0:
@@ -105,6 +120,8 @@ def train(**kwargs):
                 trainer.vis.text(str(trainer.rpn_cm.value().tolist()), win='rpn_cm')
                 # roi confusion matrix
                 trainer.vis.img('roi_cm', at.totensor(trainer.roi_cm.conf, False).float())
+
+        # 此处调用了评价函数
         eval_result = eval(test_dataloader, faster_rcnn, test_num=opt.test_num)
 
         if eval_result['map'] > best_map:
@@ -125,6 +142,6 @@ def train(**kwargs):
 
 
 if __name__ == '__main__':
-    import fire
+    import fire # 在命令行直接传入参数
 
-    fire.Fire()
+    fire.Fire() # 括号内不加内容表示命令行可以调用任何函数or类

@@ -6,15 +6,16 @@ from . import util
 import numpy as np
 from utils.config import opt
 
+# 本文件路径：data/
 
-def inverse_normalize(img):
+def inverse_normalize(img): # 反归一化？ 为何用inverse
     if opt.caffe_pretrain:
         img = img + (np.array([122.7717, 115.9465, 102.9801]).reshape(3, 1, 1))
         return img[::-1, :, :]
     # approximate un-normalize for visualize
     return (img * 0.225 + 0.45).clip(min=0, max=1) * 255
 
-
+# 两种模型的归一化
 def pytorch_normalze(img):
     """
     https://github.com/pytorch/vision/issues/223
@@ -36,7 +37,7 @@ def caffe_normalize(img):
     img = (img - mean).astype(np.float32, copy=True)
     return img
 
-
+# 预处理图片以供特征提取,预处理成为宽或高先达到指定值,并不是拉伸,而是等比例缩放
 def preprocess(img, min_size=600, max_size=1000):
     """Preprocess an image for feature extraction.
 
@@ -52,15 +53,14 @@ def preprocess(img, min_size=600, max_size=1000):
     Args:
         img (~numpy.ndarray): An image. This is in CHW and RGB format.
             The range of its value is :math:`[0, 255]`.
-         (~numpy.ndarray): An image. This is in CHW and RGB format.
-            The range of its value is :math:`[0, 255]`.
 
     Returns:
         ~numpy.ndarray:
         A preprocessed image.
 
     """
-    C, H, W = img.shape
+    # 让图片变换成最长1000，最短600.是取长边->1000
+    C, H, W = img.shape # 通道数,高,宽
     scale1 = min_size / min(H, W)
     scale2 = max_size / max(H, W)
     scale = min(scale1, scale2)
@@ -75,17 +75,17 @@ def preprocess(img, min_size=600, max_size=1000):
     return normalize(img)
 
 
-class Transform(object):
+class Transform(object): # 图像变换类
 
-    def __init__(self, min_size=600, max_size=1000):
+    def __init__(self, min_size=600, max_size=1000): # 默认是1000x600
         self.min_size = min_size
         self.max_size = max_size
 
-    def __call__(self, in_data):
+    def __call__(self, in_data): # 使该类的 实例 拥有调用功能,类似于函数
         img, bbox, label = in_data
         _, H, W = img.shape
         img = preprocess(img, self.min_size, self.max_size)
-        _, o_H, o_W = img.shape
+        _, o_H, o_W = img.shape # o_表示修改后的
         scale = o_H / H
         bbox = util.resize_bbox(bbox, (H, W), (o_H, o_W))
 
@@ -97,14 +97,14 @@ class Transform(object):
 
         return img, bbox, label, scale
 
-
+# 数据集类, 定义了获取一次获取一张图片的方法
 class Dataset:
     def __init__(self, opt):
-        self.opt = opt
-        self.db = VOCBboxDataset(opt.voc_data_dir)
+        self.opt = opt # 初始化Dataset的设置参数
+        self.db = VOCBboxDataset(opt.voc_data_dir) # 返回带label的数据
         self.tsf = Transform(opt.min_size, opt.max_size)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx): # 以 [] 方式获取数据,不允许切片
         ori_img, bbox, label, difficult = self.db.get_example(idx)
 
         img, bbox, label, scale = self.tsf((ori_img, bbox, label))
@@ -112,12 +112,12 @@ class Dataset:
         # some of the strides of a given numpy array are negative.
         return img.copy(), bbox.copy(), label.copy(), scale
 
-    def __len__(self):
+    def __len__(self): # 定义数据集长度
         return len(self.db)
 
 
 class TestDataset:
-    def __init__(self, opt, split='test', use_difficult=True):
+    def __init__(self, opt, split='test', use_difficult=True): # 返回测试集
         self.opt = opt
         self.db = VOCBboxDataset(opt.voc_data_dir, split=split, use_difficult=use_difficult)
 

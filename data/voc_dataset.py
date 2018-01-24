@@ -25,7 +25,7 @@ class VOCBboxDataset:
     :math:`(R, 4)`, where :math:`R` is the number of bounding boxes in
     the image. The second axis represents attributes of the bounding box.
     They are :math:`(y_{min}, x_{min}, y_{max}, x_{max})`, where the
-    four attributes are coordinates of the top left and the bottom right
+    four attributes are coordinates of the t  op left and the bottom right
     vertices.
 
     The labels are packed into a one dimensional tensor of shape :math:`(R,)`.
@@ -154,4 +154,4 @@ VOC_BBOX_LABEL_NAMES = (
     'sheep',
     'sofa',
     'train',
-    'tvmonitor')
+    'tvmonitor') # VOC比赛的20个类

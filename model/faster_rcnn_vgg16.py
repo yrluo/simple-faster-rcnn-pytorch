@@ -7,16 +7,17 @@ from model.roi_module import RoIPooling2D
 from utils import array_tool as at
 from utils.config import opt
 
-
+# 微调官方VGG16模型
 def decom_vgg16():
     # the 30th layer of features is relu of conv5_3
-    if opt.caffe_pretrain:
-        model = vgg16(pretrained=False)
-        if not opt.load_path:
-            model.load_state_dict(t.load(opt.caffe_pretrain_path))
-    else:
-        model = vgg16(not opt.load_path)
+    # if opt.caffe_pretrain: # 如果是caffe预训练
+    #     model = vgg16(pretrained=False)
+    #     if not opt.load_path: #　如果要load_path
+    #         model.load_state_dict(t.load(opt.caffe_pretrain_path))
+    # else: # 如果是torchvision预训练模型
+    #     model = vgg16(not opt.load_path) # not None 就是 True
 
+    model = vgg16(pretrained=False) # 直接指定训练模型是 没有预训练的 vgg16
     features = list(model.features)[:30]
     classifier = model.classifier
 
@@ -32,9 +33,13 @@ def decom_vgg16():
         for p in layer.parameters():
             p.requires_grad = False
 
+    # 返回一套特征空间,以及分类器
+    # *变量名用于拆解一个list或者tuple
     return nn.Sequential(*features), classifier
 
 
+# 自行重定义基于VGG16的Faster R-CNN
+# 继承自FasterRCNN
 class FasterRCNNVGG16(FasterRCNN):
     """Faster R-CNN based on VGG-16.
     For descriptions on the interface of this model, please refer to
@@ -42,8 +47,10 @@ class FasterRCNNVGG16(FasterRCNN):
 
     Args:
         n_fg_class (int): The number of classes excluding the background.
+
         ratios (list of floats): This is ratios of width to height of
             the anchors.
+
         anchor_scales (list of numbers): This is areas of anchors.
             Those areas will be the product of the square of an element in
             :obj:`anchor_scales` and the original area of the reference
@@ -58,7 +65,8 @@ class FasterRCNNVGG16(FasterRCNN):
                  ratios=[0.5, 1, 2],
                  anchor_scales=[8, 16, 32]
                  ):
-                 
+
+        # 使用VGG16的标准特征提取器和分类器
         extractor, classifier = decom_vgg16()
 
         rpn = RegionProposalNetwork(
@@ -74,8 +82,8 @@ class FasterRCNNVGG16(FasterRCNN):
             spatial_scale=(1. / self.feat_stride),
             classifier=classifier
         )
-
-        super(FasterRCNNVGG16, self).__init__(
+        # 操作FasterRCNNVGG16的父类的初始化方法, 初始化新定义的extractor, rpn, head
+        super().__init__(
             extractor,
             rpn,
             head,

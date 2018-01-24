@@ -11,7 +11,7 @@ from data.dataset import preprocess
 from torch.nn import functional as F
 from utils.config import opt
 
-
+# Faster R-CNN基类
 class FasterRCNN(nn.Module):
     """Base class for Faster R-CNN.
 
@@ -31,9 +31,11 @@ class FasterRCNN(nn.Module):
 
     There are two functions :meth:`predict` and :meth:`__call__` to conduct
     object detection.
+
     :meth:`predict` takes images and returns bounding boxes that are converted
     to image coordinates. This will be useful for a scenario when
     Faster R-CNN is treated as a black box function, for instance.
+
     :meth:`__call__` is provided for a scnerario when intermediate outputs
     are needed, for instance, for training and debugging.
 
