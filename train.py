@@ -5,7 +5,7 @@ import matplotlib
 from tqdm import tqdm # 进度条
 
 from utils.config import opt # 引入定义的config类实例opt
-from data.dataset import Dataset, TestDataset, inverse_normalize # 作者自己定义的Dataset类，不是pytorch的Dataset类
+from data.dataset import Dataset, TestDataset, inverse_normalize # 作者自己定义的Dataset类
 from model import FasterRCNNVGG16
 
 from torch.autograd import Variable
@@ -33,15 +33,16 @@ matplotlib.use('agg') # agg貌似不能绘图
 os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
 os.environ["CUDA_VISIBLE_DEVICES"] = '1' # 使用第二张显卡
 
+
 def eval(dataloader, faster_rcnn, test_num=10000): # 评价函数
-    pred_bboxes, pred_labels, pred_scores = list(), list(), list()
-    gt_bboxes, gt_labels, gt_difficults = list(), list(), list()
+    pred_bboxes, pred_labels, pred_scores = list(), list(), list() # 预测结果
+    gt_bboxes, gt_labels, gt_difficults = list(), list(), list() # 真实结果
     for ii, (imgs, sizes, gt_bboxes_, gt_labels_, gt_difficults_) in tqdm(enumerate(dataloader)): # ii 用来指示当前进度
         sizes = [sizes[0][0], sizes[1][0]]
-        pred_bboxes_, pred_labels_, pred_scores_ = faster_rcnn.predict(imgs, [sizes])
+        pred_bboxes_, pred_labels_, pred_scores_ = faster_rcnn.predict(imgs, [sizes]) # 预测图片
         gt_bboxes += list(gt_bboxes_.numpy())
         gt_labels += list(gt_labels_.numpy())
-        gt_difficults += list(gt_difficults_.numpy())
+        gt_difficults += list(gt_difficults_.numpy()) # 这哥们英语一般
         pred_bboxes += pred_bboxes_
         pred_labels += pred_labels_
         pred_scores += pred_scores_
@@ -50,10 +51,9 @@ def eval(dataloader, faster_rcnn, test_num=10000): # 评价函数
     result = eval_detection_voc(
         pred_bboxes, pred_labels, pred_scores,
         gt_bboxes, gt_labels, gt_difficults,
-        use_07_metric=True)
+        use_07_metric=True) # 计算预测好坏情况
     return result
 
-# TODO: 指定使用哪一张显卡，方法见书本
 def train(**kwargs): # *变量名, 表示任何多个无名参数, 它是一个tuple；**变量名, 表示关键字参数, 它是一个dict
     opt._parse(kwargs) # 识别参数,传递过来的是一个字典,用parse来解析
 
@@ -77,24 +77,31 @@ def train(**kwargs): # *变量名, 表示任何多个无名参数, 它是一个t
                                        )
     faster_rcnn = FasterRCNNVGG16() # 网络定义
     print('模型构建完毕!')
+
     trainer = FasterRCNNTrainer(faster_rcnn).cuda() # 定义一个训练器,返回loss, .cuda()表示把返回的Tensor存入GPU
+
     if opt.load_path: # 如果要加载预训练模型
         trainer.load(opt.load_path)
         print('已加载预训练参数 %s' % opt.load_path)
     else:
         print("未引入预训练参数, 随机初始化网络参数")
 
-    trainer.vis.text(dataset.db.label_names, win='labels') # 定义可视化的标题
-    best_map = 0
-    for epoch in range(opt.epoch):
+    trainer.vis.text(dataset.db.label_names, win='labels') # 显示labels标题
+    best_map = 0 # 定义一个best_map
+
+    for epoch in range(opt.epoch): # 对于每一个epoch
+
         trainer.reset_meters() # 重置测各种测量仪
+
+        # 对每一个数据
         for ii, (img, bbox_, label_, scale) in tqdm(enumerate(dataloader)):
             scale = at.scalar(scale) # 转化为标量
             img, bbox, label = img.cuda().float(), bbox_.cuda(), label_.cuda() # 存入GPU
             img, bbox, label = Variable(img), Variable(bbox), Variable(label) # 转换成变量以供自动微分器使用
-            trainer.train_step(img, bbox, label, scale)
+            # TODO
+            trainer.train_step(img, bbox, label, scale) # 训练一步
 
-            if (ii + 1) % opt.plot_every == 0:
+            if (ii + 1) % opt.plot_every == 0: # 如果到达"每多少次显示"
                 if os.path.exists(opt.debug_file):
                     ipdb.set_trace()
 
@@ -121,13 +128,14 @@ def train(**kwargs): # *变量名, 表示任何多个无名参数, 它是一个t
                 # roi confusion matrix
                 trainer.vis.img('roi_cm', at.totensor(trainer.roi_cm.conf, False).float())
 
-        # 此处调用了评价函数
+        # 使用测试数据集来评价模型(此步里面包含预测信息)
         eval_result = eval(test_dataloader, faster_rcnn, test_num=opt.test_num)
 
         if eval_result['map'] > best_map:
             best_map = eval_result['map']
-            best_path = trainer.save(best_map=best_map)
-        if epoch == 9:
+            best_path = trainer.save(best_map=best_map) # 好到一定程度就存储模型, 存储在checkpoint文件夹内
+
+        if epoch == 9: # 到第9轮的时候读取模型, 并调整学习率
             trainer.load(best_path)
             trainer.faster_rcnn.scale_lr(opt.lr_decay)
 
@@ -137,11 +145,13 @@ def train(**kwargs): # *变量名, 表示任何多个无名参数, 它是一个t
                                                   str(eval_result['map']),
                                                   str(trainer.get_meter_data()))
         trainer.vis.log(log_info)
-        if epoch == 13: 
-            break
 
+        # if epoch == 13:  # 到第14轮的时候停止训练
+        #     break
+        
+    trainer.save(best_map=best_map)
 
 if __name__ == '__main__':
-    import fire # 在命令行直接传入参数
 
+    import fire # 在命令行直接传入参数
     fire.Fire() # 括号内不加内容表示命令行可以调用任何函数or类
