@@ -1,3 +1,6 @@
 # Created by .ignore support plugin (hsz.mobi)
 .ipynb_checkpoints/
 model/pth/
+checkpoints/
+.idea/
+__pycache__/
